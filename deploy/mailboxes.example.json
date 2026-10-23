@@ -1,0 +1,4 @@
+{
+  "replace-with-test-a-keycloak-subject-uuid": "mcp-test-a@corp.example",
+  "replace-with-test-b-keycloak-subject-uuid": "mcp-test-b@corp.example"
+}

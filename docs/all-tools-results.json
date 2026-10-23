@@ -1,0 +1,503 @@
+{
+  "status": "PASS",
+  "time_moscow": "2026-10-23T12:20:14.680916+03:00",
+  "gateway": "http://localhost:8400",
+  "server_id": "outlook_lab",
+  "backend": "demo",
+  "exchange_verified": false,
+  "oauth": "authorization_code + S256 PKCE, real Keycloak per-user tokens persisted by LiteLLM",
+  "tool_count": 12,
+  "call_count": 59,
+  "positive_calls": 29,
+  "negative_calls": 30,
+  "attachment_sha256": "54e4ec1f0938d804b1b5fb73dc1040b76253badbf984300ee4160f0035967a6d",
+  "tools": {
+    "get_attachment": {
+      "positive": 1,
+      "negative": 3,
+      "scenarios": [
+        "attachment bytes",
+        "missing attachment rejected",
+        "Bob cannot access Alice message",
+        "real OAuth token missing operation scope"
+      ]
+    },
+    "get_email": {
+      "positive": 7,
+      "negative": 4,
+      "scenarios": [
+        "full owned message",
+        "missing message rejected",
+        "wrong folder rejected",
+        "read flag persisted",
+        "unread flag persisted",
+        "Bob cannot access Alice message",
+        "draft persisted with recipients",
+        "sent item persisted",
+        "item found in trash",
+        "real OAuth token missing operation scope",
+        "read-only token can read"
+      ]
+    },
+    "list_events": {
+      "positive": 4,
+      "negative": 2,
+      "scenarios": [
+        "saved event appears in own calendar",
+        "overlapping interval",
+        "non-overlapping interval",
+        "Bob calendar does not reveal Alice event",
+        "timezone required",
+        "real OAuth token missing operation scope"
+      ]
+    },
+    "list_folders": {
+      "positive": 2,
+      "negative": 1,
+      "scenarios": [
+        "alice: folders",
+        "bob: folders",
+        "real OAuth token missing operation scope"
+      ]
+    },
+    "mark_email_read": {
+      "positive": 2,
+      "negative": 2,
+      "scenarios": [
+        "mark read",
+        "mark unread",
+        "Bob cannot access Alice message",
+        "real OAuth token missing operation scope"
+      ]
+    },
+    "move_email": {
+      "positive": 2,
+      "negative": 3,
+      "scenarios": [
+        "Bob cannot access Alice message",
+        "recoverable deletion",
+        "restore from trash",
+        "cannot convert sent message to draft",
+        "real OAuth token missing operation scope"
+      ]
+    },
+    "save_draft": {
+      "positive": 1,
+      "negative": 4,
+      "scenarios": [
+        "save unsent draft with cc/bcc",
+        "invalid recipient rejected",
+        "empty recipient list rejected",
+        "real OAuth token missing operation scope",
+        "read-only token cannot write"
+      ]
+    },
+    "save_event": {
+      "positive": 1,
+      "negative": 2,
+      "scenarios": [
+        "personal event without invitation",
+        "zero duration rejected",
+        "real OAuth token missing operation scope"
+      ]
+    },
+    "search_contacts": {
+      "positive": 2,
+      "negative": 1,
+      "scenarios": [
+        "directory query and limit",
+        "empty directory search",
+        "real OAuth token missing operation scope"
+      ]
+    },
+    "search_emails": {
+      "positive": 2,
+      "negative": 2,
+      "scenarios": [
+        "text query, limit and own mailbox",
+        "empty search",
+        "limit above 100 rejected",
+        "real OAuth token missing operation scope"
+      ]
+    },
+    "send_draft": {
+      "positive": 1,
+      "negative": 5,
+      "scenarios": [
+        "confirmation required",
+        "Bob cannot send Alice draft",
+        "confirmed synthetic send",
+        "already sent draft cannot be sent again",
+        "real OAuth token missing operation scope",
+        "read-only token cannot send"
+      ]
+    },
+    "whoami": {
+      "positive": 4,
+      "negative": 1,
+      "scenarios": [
+        "alice: OAuth subject and backend",
+        "bob: OAuth subject and backend",
+        "mailbox argument injection rejected",
+        "access token has no operation scopes",
+        "full lab access restored"
+      ]
+    }
+  },
+  "calls": [
+    {
+      "tool": "whoami",
+      "case": "alice: OAuth subject and backend",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_folders",
+      "case": "alice: folders",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "whoami",
+      "case": "bob: OAuth subject and backend",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_folders",
+      "case": "bob: folders",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "search_emails",
+      "case": "text query, limit and own mailbox",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "search_emails",
+      "case": "empty search",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "search_emails",
+      "case": "limit above 100 rejected",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "full owned message",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_attachment",
+      "case": "attachment bytes",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_attachment",
+      "case": "missing attachment rejected",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "missing message rejected",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "wrong folder rejected",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "whoami",
+      "case": "mailbox argument injection rejected",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "mark_email_read",
+      "case": "mark read",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "read flag persisted",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "mark_email_read",
+      "case": "mark unread",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "unread flag persisted",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "Bob cannot access Alice message",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_attachment",
+      "case": "Bob cannot access Alice message",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "mark_email_read",
+      "case": "Bob cannot access Alice message",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "move_email",
+      "case": "Bob cannot access Alice message",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "save_draft",
+      "case": "save unsent draft with cc/bcc",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "draft persisted with recipients",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "save_draft",
+      "case": "invalid recipient rejected",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "save_draft",
+      "case": "empty recipient list rejected",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "send_draft",
+      "case": "confirmation required",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "send_draft",
+      "case": "Bob cannot send Alice draft",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "send_draft",
+      "case": "confirmed synthetic send",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "send_draft",
+      "case": "already sent draft cannot be sent again",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "sent item persisted",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "move_email",
+      "case": "recoverable deletion",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "item found in trash",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "move_email",
+      "case": "restore from trash",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "move_email",
+      "case": "cannot convert sent message to draft",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "search_contacts",
+      "case": "directory query and limit",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "search_contacts",
+      "case": "empty directory search",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "save_event",
+      "case": "personal event without invitation",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_events",
+      "case": "saved event appears in own calendar",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_events",
+      "case": "overlapping interval",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_events",
+      "case": "non-overlapping interval",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_events",
+      "case": "Bob calendar does not reveal Alice event",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "save_event",
+      "case": "zero duration rejected",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_events",
+      "case": "timezone required",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "whoami",
+      "case": "access token has no operation scopes",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_folders",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "search_emails",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_attachment",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "save_draft",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "send_draft",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "mark_email_read",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "move_email",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "search_contacts",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "list_events",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "save_event",
+      "case": "real OAuth token missing operation scope",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "get_email",
+      "case": "read-only token can read",
+      "expected": "success",
+      "status": "PASS"
+    },
+    {
+      "tool": "save_draft",
+      "case": "read-only token cannot write",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "send_draft",
+      "case": "read-only token cannot send",
+      "expected": "denied",
+      "status": "PASS"
+    },
+    {
+      "tool": "whoami",
+      "case": "full lab access restored",
+      "expected": "success",
+      "status": "PASS"
+    }
+  ]
+}

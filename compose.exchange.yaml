@@ -1,0 +1,13 @@
+# Requires a REAL Exchange VM, TLS CA and a scoped impersonation service account.
+# docker compose -f compose.yaml -f compose.exchange.yaml up -d mcp
+services:
+  mcp:
+    environment:
+      OUTLOOK_BACKEND: ews
+      OUTLOOK_EWS_ENDPOINT: ${EWS_ENDPOINT:?set HTTPS Exchange EWS endpoint}
+      OUTLOOK_EWS_USERNAME: ${EWS_USERNAME:?set scoped AD service account}
+      OUTLOOK_EWS_PASSWORD_FILE: /run/secrets/ews-password
+      REQUESTS_CA_BUNDLE: /run/config/exchange-ca.pem
+    volumes:
+      - ./.local/exchange-password:/run/secrets/ews-password:ro
+      - ./.local/exchange-ca.pem:/run/config/exchange-ca.pem:ro

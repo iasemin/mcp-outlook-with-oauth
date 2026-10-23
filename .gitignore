@@ -1,0 +1,20 @@
+.venv/
+.local/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.env
+.env.*
+!.env.example
+deploy/keycloak/realm.json
+deploy/k8s/secrets.yaml
+
+# Local planning and machine-specific investigation (not part of the product).
+docs/superpowers/
+docs/windows-vm-feasibility.md
+# Superseded local notes; public documentation is maintained in docs/en and docs/ru.
+docs/review/
+docs/exchange-2019-cu15-internal.md
+docs/all-tools-validation.md
+docs/validation.md

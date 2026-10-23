@@ -1,0 +1,117 @@
+# Deployment example for the REAL EWS backend; replace .example addresses and image.
+# This is not applied by the local stand and does not deploy Exchange or AD.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: outlook-mcp
+  namespace: outlook-mcp
+data:
+  OUTLOOK_BACKEND: ews
+  OUTLOOK_ISSUER: https://sso.corp.example/realms/corp
+  OUTLOOK_JWKS_URI: https://sso.corp.example/realms/corp/protocol/openid-connect/certs
+  OUTLOOK_AUDIENCE: outlook-mcp
+  OUTLOOK_PUBLIC_URL: https://mail-mcp.corp.example
+  OUTLOOK_EWS_ENDPOINT: https://exchange.corp.example/EWS/Exchange.asmx
+  OUTLOOK_MAPPING_FILE: /run/config/mailboxes.json
+  OUTLOOK_EWS_PASSWORD_FILE: /run/secrets/ews-password
+  REQUESTS_CA_BUNDLE: /run/ca/ca.pem
+  SSL_CERT_FILE: /run/ca/ca.pem
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: outlook-mcp
+  namespace: outlook-mcp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: outlook-mcp
+  template:
+    metadata:
+      labels:
+        app: outlook-mcp
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp
+          image: registry.corp.example/outlook-ews-mcp:0.1.0
+          ports:
+            - containerPort: 8766
+              name: http
+          envFrom:
+            - configMapRef:
+                name: outlook-mcp
+          env:
+            - name: OUTLOOK_EWS_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: outlook-ews
+                  key: username
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: '1'
+              memory: 512Mi
+          volumeMounts:
+            - name: mapping
+              mountPath: /run/config
+              readOnly: true
+            - name: ews-secret
+              mountPath: /run/secrets
+              readOnly: true
+            - name: ca
+              mountPath: /run/ca
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: mapping
+          configMap:
+            name: outlook-mailbox-mapping
+        - name: ews-secret
+          secret:
+            secretName: outlook-ews
+            defaultMode: 0440
+        - name: ca
+          configMap:
+            name: outlook-ca
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: outlook-mcp
+  namespace: outlook-mcp
+spec:
+  selector:
+    app: outlook-mcp
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

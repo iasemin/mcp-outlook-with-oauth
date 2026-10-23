@@ -1,0 +1,35 @@
+# Independent internal EWS deployment; does not alter the local synthetic stand.
+services:
+  mcp:
+    image: outlook-ews-mcp:0.1.0
+    environment:
+      OUTLOOK_BACKEND: ews
+      OUTLOOK_ISSUER: ${OIDC_ISSUER:?set internal Keycloak issuer}
+      OUTLOOK_JWKS_URI: ${OIDC_JWKS_URI:?set internal Keycloak JWKS URL}
+      OUTLOOK_AUDIENCE: outlook-mcp
+      OUTLOOK_PUBLIC_URL: ${MCP_PUBLIC_URL:?set MCP HTTPS public origin without /mcp}
+      OUTLOOK_MAPPING_FILE: /run/config/mailboxes.json
+      OUTLOOK_EWS_ENDPOINT: ${EWS_ENDPOINT:?set internal HTTPS EWS endpoint}
+      OUTLOOK_EWS_USERNAME: ${EWS_USERNAME:?set scoped service login}
+      OUTLOOK_EWS_PASSWORD_FILE: /run/secrets/ews-password
+      REQUESTS_CA_BUNDLE: /run/config/ca.pem
+      SSL_CERT_FILE: /run/config/ca.pem
+    volumes:
+      - ./.local/internal/mailboxes.json:/run/config/mailboxes.json:ro
+      - ./.local/internal/ca.pem:/run/config/ca.pem:ro
+      - ./.local/internal/ews-password:/run/secrets/ews-password:ro
+    ports:
+      - 127.0.0.1:${MCP_HOST_PORT:-8767}:8766
+    networks:
+      litellm:
+        aliases: [outlook-mcp-internal]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    restart: unless-stopped
+networks:
+  litellm:
+    external: true
+    name: ${LITELLM_NETWORK:?set existing LiteLLM Docker network}
