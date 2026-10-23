@@ -4,15 +4,15 @@
 
 A self-hosted MCP server for on-premises Microsoft Exchange: user OAuth2 authentication, EWS mailbox access, and integration with LiteLLM. Outlook desktop and Microsoft Graph are not required.
 
-**Status:** all 12 tools passed 59 synthetic-backend calls through an existing LiteLLM 1.96.0 and real Keycloak OAuth2. The local suite has 26 tests. **Live Exchange 2019 CU15 interoperability and Kubernetes deployment have not yet been verified.**
+**Status:** all 12 tools passed 59 synthetic-backend calls through an existing LiteLLM 1.96.0 and real Keycloak OAuth2. The local suite has 32 tests. **Live Exchange 2019 CU15 interoperability and Kubernetes deployment have not yet been verified.**
 
 ```text
-User → LiteLLM → MCP → Exchange EWS
-          ↕      ↓
-       Keycloak  JWT + scopes + subject-to-mailbox mapping
+LiteLLM → MCP OAuth proxy → Exchange EWS
+              ↕
+       AAS / Keycloak (lab)
 ```
 
-MCP accepts Keycloak access tokens via Authorization Code + PKCE. The EWS adapter separately uses HTTPS + NTLM with a scoped impersonation service account. OAuth2 at MCP does not turn Exchange authentication into OAuth2.
+**MCP is the confidential OAuth2 client of AAS.** It receives the callback, exchanges codes with PKCE, refreshes AAS tokens and stores them encrypted. LiteLLM receives separate MCP tokens; the AAS client secret stays in MCP. Keycloak substitutes for AAS in the lab. Exchange access still uses separate HTTPS + NTLM service-account impersonation. AAS password retrieval is not implemented; the actual platform contract is still required.
 
 ## Capabilities
 
@@ -29,7 +29,7 @@ uv sync --frozen
 uv run pytest -q
 
 docker buildx build --platform linux/amd64 \
-  -t YOUR_REGISTRY/mcp-outlook-with-oauth:0.1.0 --push .
+  -t YOUR_REGISTRY/mcp-outlook-with-oauth:0.2.0 --push .
 ```
 
 No container image is published by this repository yet; build and push to your own registry. Python package/module names remain `outlook-ews-mcp` / `outlook_mcp`.

@@ -19,6 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 CREDS = json.loads((ROOT / ".local/credentials.json").read_text())
 
 
+class ConsentForm(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.fields = {}
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "input" and attrs.get("name"):
+            self.fields[attrs["name"]] = attrs.get("value", "")
+
+
 class LoginForm(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -30,7 +41,7 @@ class LoginForm(HTMLParser):
             self.action = attributes.get("action")
 
 
-def oauth_login(username, key, scope=None):
+def oauth_login(username, key, scope=None, *, invalid_verifier=False):
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
     state = secrets.token_urlsafe(24)
@@ -50,7 +61,19 @@ def oauth_login(username, key, scope=None):
             },
         )
         assert response.status_code in (302, 307), f"Authorize failed: {response.status_code}"
-        login = browser.get(response.headers["location"])
+        consent_url = response.headers["location"]
+        consent = browser.get(consent_url, follow_redirects=True)
+        assert consent.status_code == 200 and "/consent" in str(consent.url), "MCP consent not found"
+        form = ConsentForm()
+        form.feed(consent.text)
+        assert form.fields.get("csrf_token"), "MCP consent CSRF missing"
+        approved = browser.post(str(consent.url), data=form.fields | {"action": "approve"})
+        assert approved.status_code in (302, 303, 307), "MCP consent failed"
+        upstream = parse_qs(urlparse(approved.headers["location"]).query)
+        assert upstream["client_id"] == ["outlook-mcp"], "MCP is not the AAS OAuth client"
+        assert upstream["redirect_uri"] == ["http://localhost:8766/auth/callback"]
+        assert upstream["code_challenge_method"] == ["S256"]
+        login = browser.get(approved.headers["location"])
         form = LoginForm()
         form.feed(login.text)
         assert form.action, "Keycloak login form not found"
@@ -64,7 +87,9 @@ def oauth_login(username, key, scope=None):
             form.action, data={"username": username, "password": CREDS[username], "credentialId": ""}
         )
         assert response.status_code in (302, 303), f"Keycloak sign-in failed: {response.status_code}"
-        callback = browser.get(response.headers["location"])
+        mcp_callback = browser.get(response.headers["location"])
+        assert mcp_callback.status_code in (302, 303, 307), "MCP upstream code exchange failed"
+        callback = browser.get(mcp_callback.headers["location"])
         assert callback.status_code in (302, 307), f"LiteLLM callback failed: {callback.status_code}"
         params = parse_qs(urlparse(callback.headers["location"]).query)
         assert params.get("state") == [state], "OAuth state mismatch"
@@ -76,10 +101,13 @@ def oauth_login(username, key, scope=None):
                 "code": code,
                 "client_id": "outlook_lab",
                 "redirect_uri": "http://localhost:8899/callback",
-                "code_verifier": verifier,
+                "code_verifier": "wrong-" + verifier if invalid_verifier else verifier,
             },
             headers={"x-litellm-api-key": "Bearer " + key},
         )
+        if invalid_verifier:
+            assert response.status_code == 400, "Incorrect PKCE verifier was accepted"
+            return None
         assert response.status_code == 200, f"LiteLLM code exchange failed: {response.status_code}"
         result = response.json()
         assert result.get("access_token") and result.get("refresh_token"), "No OAuth tokens returned"
@@ -109,7 +137,13 @@ def content(result):
 
 
 def main():
-    report = {"gateway": BASE, "backend": "demo", "exchange_verified": False, "checks": []}
+    report = {
+        "gateway": BASE,
+        "backend": "demo",
+        "exchange_verified": False,
+        "oauth_client": "MCP (outlook-mcp)",
+        "checks": [],
+    }
     key_path = ROOT / ".local/litellm-user-keys.json"
     keys = json.loads(key_path.read_text()) if key_path.exists() else {}
     with admin_client() as admin:
@@ -208,22 +242,36 @@ def main():
                 },
                 json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
             )
-            assert old.status_code == 401, "Expired Keycloak access token was accepted"
+            assert old.status_code == 401, "Expired MCP access token was accepted"
         assert content(gateway_call(clients["alice"], "whoami"))["mailbox"] == "alice@lab.example"
         report["checks"].append(
-            "Expired real Keycloak token rejected; LiteLLM refreshes per-user token automatically"
+            "Expired MCP token rejected; LiteLLM refreshes at MCP, MCP refreshes at Keycloak"
         )
+        # LiteLLM proactively refreshes short-lived tokens; the original refresh token
+        # has already been rotated. Use a fresh login for an independent explicit grant.
+        explicit = oauth_login("alice", keys["alice"])
         with httpx.Client(timeout=30) as client:
             response = client.post(
                 BASE + "/outlook_lab/token",
                 data={
                     "grant_type": "refresh_token",
-                    "refresh_token": tokens["alice"]["refresh_token"],
+                    "refresh_token": explicit["refresh_token"],
                     "client_id": "outlook_lab",
                 },
                 headers={"x-litellm-api-key": "Bearer " + keys["alice"]},
             )
             assert response.status_code == 200 and response.json().get("access_token"), "OAuth refresh failed"
+            replay = client.post(
+                BASE + "/outlook_lab/token",
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": explicit["refresh_token"],
+                    "client_id": "outlook_lab",
+                },
+                headers={"x-litellm-api-key": "Bearer " + keys["alice"]},
+            )
+            assert replay.status_code == 400, "Used refresh token was accepted twice"
+
             headers = {"Accept": "application/json, text/event-stream"}
             response = client.post(
                 "http://localhost:8766/mcp",
@@ -238,8 +286,13 @@ def main():
             )
             assert response.status_code == 401
         report["checks"].extend(
-            ["Refresh token grant via existing LiteLLM", "Missing/malformed token rejected by MCP"]
+            [
+                "Refresh via LiteLLM -> MCP -> Keycloak; rotated refresh token replay rejected",
+                "Missing/malformed token rejected by MCP",
+            ]
         )
+        oauth_login("alice", keys["alice"], invalid_verifier=True)
+        report["checks"].append("Incorrect downstream PKCE verifier rejected")
         tools = checked(clients["alice"].get("/mcp-rest/tools/list", params={"server_id": "outlook_lab"}))
         report["tool_count"] = len(tools["tools"])
         report["status"] = "PASS"

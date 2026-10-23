@@ -3,12 +3,11 @@ from typing import Annotated
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
-from fastmcp.server.auth import RemoteAuthProvider
 from fastmcp.server.dependencies import get_access_token
 from pydantic import Field
 from starlette.responses import JSONResponse
 
-from .auth import AccessTokenVerifier
+from .auth import build_auth
 from .config import Settings
 from .demo import DemoBackend
 from .identity import IdentityError, principal_from_claims
@@ -21,21 +20,7 @@ Recipients = Annotated[list[str], Field(min_length=1, max_length=100)]
 
 def create_server(settings: Settings, backend=None):
     mapping = settings.mapping()
-    verifier = AccessTokenVerifier(
-        public_key=settings.public_key,
-        jwks_uri=settings.jwks_uri,
-        issuer=settings.issuer,
-        audience=settings.audience,
-        algorithm="RS256",
-    )
-    auth = RemoteAuthProvider(
-        token_verifier=verifier,
-        authorization_servers=[settings.issuer],
-        base_url=settings.public_url,
-        resource_base_url=settings.public_url,
-        scopes_supported=SCOPES,
-        resource_name="Outlook Exchange MCP",
-    )
+    auth = build_auth(settings, SCOPES)
     mcp = FastMCP(
         "Outlook Exchange MCP",
         auth=auth,

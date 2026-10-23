@@ -1,11 +1,19 @@
 # Independent internal EWS deployment; does not alter the local synthetic stand.
 services:
   mcp:
-    image: outlook-ews-mcp:0.1.0
+    image: outlook-ews-mcp:0.2.0
     environment:
       OUTLOOK_BACKEND: ews
-      OUTLOOK_ISSUER: ${OIDC_ISSUER:?set internal Keycloak issuer}
-      OUTLOOK_JWKS_URI: ${OIDC_JWKS_URI:?set internal Keycloak JWKS URL}
+      OUTLOOK_AUTH_MODE: proxy
+      OUTLOOK_AUTHORIZATION_ENDPOINT: ${AAS_AUTHORIZATION_ENDPOINT:?set AAS authorization URL}
+      OUTLOOK_TOKEN_ENDPOINT: ${AAS_TOKEN_ENDPOINT:?set AAS token URL}
+      OUTLOOK_OAUTH_CLIENT_ID: ${AAS_CLIENT_ID:?register MCP at AAS}
+      OUTLOOK_OAUTH_CLIENT_SECRET_FILE: /run/oauth-secrets/aas-client-secret
+      OUTLOOK_OAUTH_SIGNING_KEY_FILE: /run/oauth-secrets/oauth-signing-key
+      OUTLOOK_OAUTH_STORAGE_DIR: /var/lib/outlook-mcp/oauth
+      OUTLOOK_CLIENT_REDIRECT_URIS: ${MCP_CLIENT_REDIRECT_URIS:?set JSON array of exact LiteLLM callback URLs}
+      OUTLOOK_ISSUER: ${OIDC_ISSUER:?set internal AAS issuer}
+      OUTLOOK_JWKS_URI: ${OIDC_JWKS_URI:?set internal AAS JWKS URL}
       OUTLOOK_AUDIENCE: outlook-mcp
       OUTLOOK_PUBLIC_URL: ${MCP_PUBLIC_URL:?set MCP HTTPS public origin without /mcp}
       OUTLOOK_MAPPING_FILE: /run/config/mailboxes.json
@@ -15,6 +23,9 @@ services:
       REQUESTS_CA_BUNDLE: /run/config/ca.pem
       SSL_CERT_FILE: /run/config/ca.pem
     volumes:
+      - ./.local/internal/aas-client-secret:/run/oauth-secrets/aas-client-secret:ro
+      - ./.local/internal/oauth-signing-key:/run/oauth-secrets/oauth-signing-key:ro
+      - oauth-state:/var/lib/outlook-mcp/oauth
       - ./.local/internal/mailboxes.json:/run/config/mailboxes.json:ro
       - ./.local/internal/ca.pem:/run/config/ca.pem:ro
       - ./.local/internal/ews-password:/run/secrets/ews-password:ro
@@ -33,3 +44,6 @@ networks:
   litellm:
     external: true
     name: ${LITELLM_NETWORK:?set existing LiteLLM Docker network}
+
+volumes:
+  oauth-state:

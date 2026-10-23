@@ -2,6 +2,14 @@
 
 [Русский](../ru/architecture.md)
 
+## MCP as the AAS OAuth2 client
+
+Previously MCP only verified Keycloak tokens while LiteLLM was the upstream OAuth client. The revised requirement moves that role to **FastMCP OAuthProxy**: MCP is the confidential AAS client, receives `/auth/callback`, exchanges codes with S256 PKCE and refreshes upstream tokens. MCP is a separate authorization server for LiteLLM and issues its own tokens. The AAS secret no longer goes to LiteLLM; the old direct client is disabled in the lab.
+
+We use the existing OAuthProxy rather than implementing the protocol ourselves: consent/CSRF, state, PKCE, downstream registration and token binding remain in the library. Our configuration restricts redirect URIs, verifies upstream JWTs and persists OAuth state with FileTreeStore + Fernet. A stable key, persistent volume and one replica are required. Legacy verification-only mode is explicit: `OUTLOOK_AUTH_MODE=resource`.
+
+This does not extract passwords from OAuth2 or prove Exchange user-token authentication. The EWS adapter still uses a service account. Actual AAS integration depends on its contract.
+
 ## What we actually used
 
 - **[FastMCP](https://github.com/PrefectHQ/fastmcp):** tool registration, HTTP MCP, JWT/JWKS verification and protected-resource discovery. The tested lock contains 3.4.11.
@@ -27,7 +35,7 @@ These observations apply to that commit, not necessarily later versions. No LICE
 | Exceptions may become normal error dictionaries | MCP `isError`; generic backend faults masked | Gateway/tests can distinguish failures without exposing internal exception text |
 | Permanent deletion can be requested | Recoverable move to trash; no permanent-delete tool | Keep first-version writes reversible where possible |
 | Reference defaults EWS schema to Exchange2013 | Library negotiates supported EWS version | Avoid an arbitrary default; schema name alone never proves 2019 incompatibility |
-| No container/Kubernetes manifests in inspected tree | Non-root image, read-only filesystem, external secrets/config, stateless HTTP | Run in containers and allow EWS-mode replicas |
+| No container/Kubernetes manifests in inspected tree | Non-root image, read-only filesystem, external secrets/config, stateless HTTP | Run in containers; OAuth proxy mode currently uses one replica with persistent state |
 | Mocked token-routing tests | API tests + live Keycloak → existing LiteLLM → MCP acceptance | Test OAuth, per-user routing and refresh across real components |
 
 `confirm=true` is an API precondition, **not an independent human approval mechanism**. A client must obtain actual user authorization before sending. An ambiguous EWS send timeout must not trigger blind application retries.

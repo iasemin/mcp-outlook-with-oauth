@@ -1,0 +1,23 @@
+{
+  "gateway": "http://localhost:8400",
+  "backend": "demo",
+  "exchange_verified": false,
+  "oauth_client": "MCP (outlook-mcp)",
+  "checks": [
+    "alice: PKCE login, stored per-user token, owned mail read via LiteLLM",
+    "bob: PKCE login, stored per-user token, owned mail read via LiteLLM",
+    "Alice cannot read Bob message ID through LiteLLM",
+    "Synthetic draft save/send; Bob cannot send Alice draft",
+    "Expired MCP token rejected; LiteLLM refreshes at MCP, MCP refreshes at Keycloak",
+    "Refresh via LiteLLM -> MCP -> Keycloak; rotated refresh token replay rejected",
+    "Missing/malformed token rejected by MCP",
+    "Incorrect downstream PKCE verifier rejected",
+    "Container rebuilt/recreated; downstream registration and encrypted upstream session survived without login",
+    "LiteLLM configuration uses a downstream MCP client and contains no AAS client secret"
+  ],
+  "tool_count": 12,
+  "status": "PASS",
+  "version": "0.2.0",
+  "api_unit_tests": 32,
+  "recorded_at": "2026-10-23T12:11:37.112918+00:00"
+}

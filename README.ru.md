@@ -4,15 +4,15 @@
 
 MCP-сервер для внутреннего Microsoft Exchange: OAuth2-вход пользователей, доступ к почте через EWS и подключение к LiteLLM. Приложение Outlook и Microsoft Graph не нужны.
 
-**Статус:** все 12 инструментов прошли 59 вызовов на синтетическом backend через существующий LiteLLM 1.96.0 и настоящий OAuth2 Keycloak. Локальный набор — 26 тестов. **Совместимость с живым Exchange 2019 CU15 и развёртывание в Kubernetes пока не проверены.**
+**Статус:** все 12 инструментов прошли 59 вызовов на синтетическом backend через существующий LiteLLM 1.96.0 и настоящий OAuth2 Keycloak. Локальный набор — 32 теста. **Совместимость с живым Exchange 2019 CU15 и развёртывание в Kubernetes пока не проверены.**
 
 ```text
-Пользователь → LiteLLM → MCP → Exchange EWS
-                  ↕      ↓
-               Keycloak  JWT + scopes + sub → ящик
+LiteLLM → MCP OAuth proxy → Exchange EWS
+              ↕
+       AAS / Keycloak (lab)
 ```
 
-MCP принимает access tokens Keycloak, полученные через Authorization Code + PKCE. Подключение к Exchange отдельное: HTTPS + NTLM и служебная учётная запись с ограниченным impersonation. OAuth2 перед MCP не означает OAuth2 между MCP и Exchange.
+**MCP — confidential OAuth2-клиент AAS.** Он принимает callback, обменивает код с PKCE, обновляет токены AAS и хранит их зашифрованными. LiteLLM получает отдельные MCP-токены; секрет клиента AAS остаётся в MCP. На стенде роль AAS выполняет Keycloak. Подключение к Exchange пока отдельное: HTTPS + NTLM под служебной учёткой с ограниченным impersonation. Выдача паролей из AAS не реализована; реальный контракт платформы ещё нужен.
 
 ## Возможности
 
@@ -29,7 +29,7 @@ uv sync --frozen
 uv run pytest -q
 
 docker buildx build --platform linux/amd64 \
-  -t YOUR_REGISTRY/mcp-outlook-with-oauth:0.1.0 --push .
+  -t YOUR_REGISTRY/mcp-outlook-with-oauth:0.2.0 --push .
 ```
 
 Готовый контейнерный образ пока не опубликован: его нужно собрать и загрузить в свой registry. Имена Python-пакета и модуля сохранены: `outlook-ews-mcp` / `outlook_mcp`.

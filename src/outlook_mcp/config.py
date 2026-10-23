@@ -8,6 +8,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="OUTLOOK_", extra="ignore")
+    auth_mode: Literal["proxy", "resource"] = "proxy"
+    authorization_endpoint: str | None = None
+    token_endpoint: str | None = None
+    oauth_client_id: str | None = None
+    oauth_client_secret_file: Path | None = None
+    oauth_signing_key_file: Path | None = None
+    oauth_storage_dir: Path = Path("/var/lib/outlook-mcp/oauth")
+    client_redirect_uris: list[str] = []
+    token_endpoint_auth_method: Literal["client_secret_basic", "client_secret_post"] = "client_secret_basic"
     backend: Literal["demo", "ews"] = "ews"
     issuer: str
     audience: str = "outlook-mcp"
@@ -25,6 +34,40 @@ class Settings(BaseSettings):
     def check(self):
         if not self.public_key and not self.jwks_uri:
             raise ValueError("JWKS URI or public key is required")
+        if self.auth_mode == "proxy":
+            if not all(
+                (
+                    self.authorization_endpoint,
+                    self.token_endpoint,
+                    self.oauth_client_id,
+                    self.oauth_client_secret_file,
+                    self.oauth_signing_key_file,
+                    self.client_redirect_uris,
+                )
+            ):
+                raise ValueError(
+                    "OAuth proxy requires AAS endpoints, client ID, secret/signing files and redirect URIs"
+                )
+            from urllib.parse import urlparse
+
+            for url in [
+                self.public_url,
+                self.issuer,
+                self.authorization_endpoint,
+                self.token_endpoint,
+                *self.client_redirect_uris,
+            ]:
+                parsed = urlparse(url)
+                if parsed.scheme != "https" and not (self.backend == "demo" and parsed.scheme == "http"):
+                    raise ValueError("OAuth proxy requires HTTPS (HTTP is allowed only for synthetic demo)")
+                if not parsed.netloc or parsed.fragment or parsed.username or "*" in url:
+                    raise ValueError(
+                        "OAuth URLs must be absolute and cannot contain wildcards, userinfo or fragments"
+                    )
+            if len(self.oauth_signing_key_file.read_text().strip()) < 32:
+                raise ValueError("OAuth signing key requires at least 32 characters")
+            if not self.oauth_client_secret_file.read_text().strip():
+                raise ValueError("OAuth client secret cannot be empty")
         if self.backend == "ews":
             if not self.ews_endpoint or not self.ews_endpoint.startswith("https://"):
                 raise ValueError("EWS requires an HTTPS endpoint")

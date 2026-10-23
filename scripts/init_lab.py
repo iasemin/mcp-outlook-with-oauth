@@ -26,6 +26,16 @@ def main():
             key: secrets.token_urlsafe(32) for key in ["postgres", "admin", "client", "alice", "bob"]
         }
         private_write(secrets_path, json.dumps(credentials, indent=2))
+    if "signing" not in credentials:
+        credentials["signing"] = secrets.token_urlsafe(48)
+        private_write(secrets_path, json.dumps(credentials, indent=2))
+    # Files live inside a private host directory; non-root container UID reads the mounts.
+    for filename, value in [
+        ("aas-client-secret", credentials["client"]),
+        ("oauth-signing-key", credentials["signing"]),
+    ]:
+        private_write(ROOT / ".local" / filename, value)
+        (ROOT / ".local" / filename).chmod(0o644)
     realm = {
         "realm": "outlook-lab",
         "enabled": True,
@@ -41,8 +51,8 @@ def main():
         ],
         "clients": [
             {
-                "clientId": "outlook-litellm",
-                "name": "Outlook lab LiteLLM",
+                "clientId": "outlook-mcp",
+                "name": "Outlook MCP OAuth client",
                 "enabled": True,
                 "protocol": "openid-connect",
                 "publicClient": False,
@@ -50,14 +60,8 @@ def main():
                 "standardFlowEnabled": True,
                 "directAccessGrantsEnabled": False,
                 "serviceAccountsEnabled": False,
-                "redirectUris": [
-                    "http://localhost:4000/callback",
-                    "http://localhost:4000/ui/mcp/oauth/callback",
-                    "http://localhost:8400/callback",
-                    "http://localhost:8400/ui/mcp/oauth/callback",
-                    "http://localhost:8899/callback",
-                ],
-                "webOrigins": ["http://localhost:4000", "http://localhost:8400"],
+                "redirectUris": ["http://localhost:8766/auth/callback"],
+                "webOrigins": [],
                 "defaultClientScopes": [],
                 "optionalClientScopes": SCOPES,
                 "attributes": {"pkce.code.challenge.method": "S256"},

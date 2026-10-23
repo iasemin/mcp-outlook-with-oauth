@@ -7,6 +7,14 @@ metadata:
   namespace: outlook-mcp
 data:
   OUTLOOK_BACKEND: ews
+  OUTLOOK_AUTH_MODE: proxy
+  OUTLOOK_AUTHORIZATION_ENDPOINT: https://aas.corp.example/authorize
+  OUTLOOK_TOKEN_ENDPOINT: https://aas.corp.example/token
+  OUTLOOK_OAUTH_CLIENT_ID: outlook-mcp
+  OUTLOOK_OAUTH_CLIENT_SECRET_FILE: /run/oauth-secrets/aas-client-secret
+  OUTLOOK_OAUTH_SIGNING_KEY_FILE: /run/oauth-secrets/oauth-signing-key
+  OUTLOOK_OAUTH_STORAGE_DIR: /var/lib/outlook-mcp/oauth
+  OUTLOOK_CLIENT_REDIRECT_URIS: '["https://litellm.corp.example/callback"]'
   OUTLOOK_ISSUER: https://sso.corp.example/realms/corp
   OUTLOOK_JWKS_URI: https://sso.corp.example/realms/corp/protocol/openid-connect/certs
   OUTLOOK_AUDIENCE: outlook-mcp
@@ -23,7 +31,9 @@ metadata:
   name: outlook-mcp
   namespace: outlook-mcp
 spec:
-  replicas: 2
+  replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: outlook-mcp
@@ -42,7 +52,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mcp
-          image: registry.corp.example/outlook-ews-mcp:0.1.0
+          image: registry.corp.example/outlook-ews-mcp:0.2.0
           ports:
             - containerPort: 8766
               name: http
@@ -86,6 +96,11 @@ spec:
             - name: ca
               mountPath: /run/ca
               readOnly: true
+            - name: oauth-secret
+              mountPath: /run/oauth-secrets
+              readOnly: true
+            - name: oauth-state
+              mountPath: /var/lib/outlook-mcp/oauth
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -99,6 +114,13 @@ spec:
         - name: ca
           configMap:
             name: outlook-ca
+        - name: oauth-secret
+          secret:
+            secretName: outlook-oauth
+            defaultMode: 0440
+        - name: oauth-state
+          persistentVolumeClaim:
+            claimName: outlook-oauth-state
         - name: tmp
           emptyDir:
             sizeLimit: 32Mi
@@ -115,3 +137,15 @@ spec:
     - name: http
       port: 80
       targetPort: http
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: outlook-oauth-state
+  namespace: outlook-mcp
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi

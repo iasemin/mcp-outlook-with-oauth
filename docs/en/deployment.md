@@ -8,7 +8,7 @@
 git clone https://github.com/iasemin/mcp-outlook-with-oauth.git
 cd mcp-outlook-with-oauth
 docker buildx build --platform linux/amd64 \
-  -t YOUR_REGISTRY/mcp-outlook-with-oauth:0.1.0 --push .
+  -t YOUR_REGISTRY/mcp-outlook-with-oauth:0.2.0 --push .
 ```
 
 No prebuilt image is currently published. Choose the platform matching your Kubernetes nodes; an Apple Silicon default build is ARM64.
@@ -30,23 +30,37 @@ The preview must contain only the intended mailboxes. Check that other assignmen
 
 Record exact CU15/SU/HU build numbers and live results. [Microsoft: scoped impersonation](https://learn.microsoft.com/en-us/exchange/client-developer/exchange-web-services/how-to-configure-impersonation), [Extended Protection](https://learn.microsoft.com/en-us/exchange/plan-and-deploy/post-installation-tasks/security-best-practices/exchange-extended-protection).
 
-## Keycloak / LiteLLM
+## AAS (Keycloak in the lab), MCP and LiteLLM
 
-Create a confidential OIDC client, e.g. `outlook-litellm`:
+**MCP itself is the AAS OAuth2 client.** Register a confidential `outlook-mcp` client; give its secret only to MCP:
 
-- Standard Flow on, PKCE **S256 required**; Direct Access Grants and Service Accounts off.
-- Exact callback `https://YOUR_LITELLM/callback`.
-- Access token: stable `sub`, canonical `iss`, `aud` containing `outlook-mcp`, `exp`, `typ=Bearer`, and requested scopes. Add the Subject and Audience mappers to the access token.
-- Define the operation scopes below as optional client scopes; authorize their issuance through your IdP policies. Optional scope registration alone does not limit which users may request it.
+- Authorization Code with S256 PKCE; callback `https://YOUR_MCP/auth/callback`.
+- Access tokens need stable `sub`, expected `iss`, `aud=outlook-mcp`, `exp`, `typ=Bearer` and `scope`. The current verifier supports RS256 JWTs; opaque tokens or a different AAS contract require an adapter.
+- Grant operation scopes under IdP policy. Lab Keycloak uses optional scopes and disables password grants.
 
-Register a new LiteLLM MCP entry: HTTP transport, `https://YOUR_MCP/mcp`, `auth_type=oauth2`, `oauth2_flow=authorization_code`, client ID/secret and requested scopes. Use a consistent HTTPS issuer reachable by browser, LiteLLM and MCP. In tested LiteLLM 1.96.0, a configured issuer overrides manual endpoint URLs; do not mix incompatible discovery and manual addresses.
+MCP exposes `/.well-known/oauth-authorization-server`, `/register`, `/authorize`, `/token`, `/auth/callback` and `/mcp`. Route these paths, `/consent` and protected-resource discovery through ingress. MCP exchanges codes and refreshes upstream tokens itself. Users approve MCP consent and sign in at AAS; user passwords are entered only at AAS.
 
-Use separate LiteLLM `user_id` values and explicitly allowed virtual keys (`object_permission.mcp_servers`). User OAuth refresh tokens live in LiteLLM, not MCP. The OAuth client secret belongs to LiteLLM; MCP only needs JWKS.
+Register LiteLLM **at MCP**, not AAS: `POST https://YOUR_MCP/register` with `redirect_uris=["https://YOUR_LITELLM/callback"]`, `token_endpoint_auth_method="none"`, `grant_types=["authorization_code","refresh_token"]`, `response_types=["code"]`. Use the returned downstream `client_id`. Configure the exact redirect in `OUTLOOK_CLIENT_REDIRECT_URIS` first.
+
+LiteLLM: HTTP URL `https://YOUR_MCP/mcp`, `auth_type=oauth2`, `oauth2_flow=authorization_code`, downstream client ID, endpoints `https://YOUR_MCP/authorize` and `https://YOUR_MCP/token`, requested scopes. Do not give LiteLLM the AAS client ID/secret. Discovery issuer is MCP; the AAS issuer stays in MCP configuration. The lab uses explicit browser/Docker endpoints with no LiteLLM issuer override.
+
+Use a distinct LiteLLM `user_id` and authorized virtual key for each user. LiteLLM stores MCP-issued tokens; encrypted AAS access/refresh tokens stay in MCP. Persist both the signing key and OAuth state directory; loss of either requires downstream client re-registration and sign-in again. Signing-key rotation also changes the storage encryption key. Treat backups as secrets.
+
+This changes MCP's OAuth role, not EWS transport: the adapter still uses scoped service-account impersonation. AAS password retrieval and user-token Exchange authentication are not implemented; those require the platform's actual contract.
 
 ## MCP settings and files
 
 | Environment variable | Example |
 |---|---|
+| OUTLOOK_AUTH_MODE | `proxy` (default); `resource` retains the legacy verifier-only mode |
+| OUTLOOK_AUTHORIZATION_ENDPOINT | `https://aas.corp.example/authorize` |
+| OUTLOOK_TOKEN_ENDPOINT | `https://aas.corp.example/token` |
+| OUTLOOK_OAUTH_CLIENT_ID | `outlook-mcp` — registered at AAS |
+| OUTLOOK_OAUTH_CLIENT_SECRET_FILE | `/run/oauth-secrets/aas-client-secret` |
+| OUTLOOK_OAUTH_SIGNING_KEY_FILE | `/run/oauth-secrets/oauth-signing-key` — stable random secret, >=32 characters |
+| OUTLOOK_OAUTH_STORAGE_DIR | `/var/lib/outlook-mcp/oauth` — persistent, writable by UID 10001 |
+| OUTLOOK_CLIENT_REDIRECT_URIS | `["https://YOUR_LITELLM/callback"]` — JSON list, exact URLs |
+| OUTLOOK_TOKEN_ENDPOINT_AUTH_METHOD | `client_secret_basic` (default) or `client_secret_post` |
 | OUTLOOK_BACKEND | `ews` (`demo` is synthetic only) |
 | OUTLOOK_ISSUER | `https://sso.corp.example/realms/corp` |
 | OUTLOOK_JWKS_URI | `https://sso.corp.example/realms/corp/protocol/openid-connect/certs` |
@@ -74,11 +88,13 @@ Mount the password separately and supply a CA bundle trusted for both Exchange a
 Use `deploy/k8s/mcp.yaml`. Replace example DNS names and image, then provision namespace `outlook-mcp` with:
 
 - Secret `outlook-ews`: keys `username`, `ews-password`.
+- Secret `outlook-oauth`: keys `aas-client-secret`, `oauth-signing-key`.
+- PVC `outlook-oauth-state`, writable by UID 10001.
 - ConfigMap `outlook-mailbox-mapping`: key `mailboxes.json`.
 - ConfigMap `outlook-ca`: key `ca.pem`.
-- Registry pull credentials and an internal TLS ingress for `/mcp` as required by your platform.
+- Registry pull credentials and an internal TLS ingress for MCP and its OAuth paths as required by your platform.
 
-The manifest provides non-root UID 10001, a read-only filesystem, resource limits, process-health probes and a Service. Start with one replica; EWS mode uses stateless HTTP and supports scaling. Demo state is in-memory and must remain single-replica. These manifests have not been deployed to a cluster yet.
+The manifest uses one replica, Recreate strategy and a PVC. HTTP MCP is stateless, but OAuth proxy state is persistent. Do not scale this file store across replicas: that requires shared network storage and concurrent-refresh validation. Demo mail remains in memory. Kubernetes deployment has not been tested.
 
 `compose.internal.yaml` is an alternative for an existing Docker-based internal LiteLLM. Fill `deploy/internal.env.example`, mount the files under `.local/internal`, and use a separate Compose project. It does not provision Exchange or Keycloak.
 

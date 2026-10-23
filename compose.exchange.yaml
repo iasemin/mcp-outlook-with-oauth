@@ -4,6 +4,14 @@ services:
   mcp:
     environment:
       OUTLOOK_BACKEND: ews
+      # EWS mode requires HTTPS for the OAuth flow too; configure the AAS MCP client accordingly.
+      OUTLOOK_ISSUER: ${OIDC_ISSUER:?set HTTPS AAS issuer}
+      OUTLOOK_JWKS_URI: ${OIDC_JWKS_URI:?set HTTPS AAS JWKS}
+      OUTLOOK_AUTHORIZATION_ENDPOINT: ${AAS_AUTHORIZATION_ENDPOINT:?set HTTPS AAS authorization URL}
+      OUTLOOK_OAUTH_CLIENT_ID: ${AAS_CLIENT_ID:?set MCP client registered at AAS}
+      OUTLOOK_TOKEN_ENDPOINT: ${AAS_TOKEN_ENDPOINT:?set HTTPS AAS token URL}
+      OUTLOOK_PUBLIC_URL: ${MCP_PUBLIC_URL:?set HTTPS MCP origin}
+      OUTLOOK_CLIENT_REDIRECT_URIS: ${MCP_CLIENT_REDIRECT_URIS:?set JSON callback URLs}
       OUTLOOK_EWS_ENDPOINT: ${EWS_ENDPOINT:?set HTTPS Exchange EWS endpoint}
       OUTLOOK_EWS_USERNAME: ${EWS_USERNAME:?set scoped AD service account}
       OUTLOOK_EWS_PASSWORD_FILE: /run/secrets/ews-password

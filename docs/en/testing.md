@@ -31,7 +31,7 @@ Generated credentials and tokens live only in ignored `.local/` and `.env`. The 
 
 Recorded on 2026-10-23:
 
-- **26 API/unit tests**, including signature, issuer, audience, expiry, future claims, ID-token rejection, scopes and subject binding.
+- **32 API/unit tests**, including signature, issuer, audience, expiry, future claims, ID-token rejection, scopes and subject binding.
 - **12/12 tools**, **59 calls through LiteLLM**: 29 success and 30 expected denial. [Machine-readable results](../all-tools-results.json).
 - Real user Authorization Code + S256 PKCE, per-user gateway token persistence, a real 45-second token expiry, automatic refresh and explicit refresh.
 - Owned synthetic mail/drafts, read flags, move/restore, directory filtering, personal events and downloaded attachment bytes/hash.
@@ -46,4 +46,12 @@ The full-tool script refuses to run when `/healthz` reports a non-demo backend. 
 
 The synthetic store does not deliver mail or emulate Exchange. EWS authentication, RBAC, delivery and CU15 behavior remain unverified. Kubernetes YAML was parsed, not cluster-tested. Test helpers using mocks are not live Exchange evidence.
 
-Stop with `docker compose stop`; `docker compose down` removes this stand but keeps its PostgreSQL volume. Neither command stops existing LiteLLM or deletes its `outlook_lab` database registration. Keep the generated credentials with the retained Keycloak database.
+Stop with `docker compose stop`; `docker compose down` removes this stand but keeps its PostgreSQL and OAuth-state volumes. Neither command stops existing LiteLLM or deletes its `outlook_lab` database registration. Keep the generated credentials with the retained Keycloak database.
+
+## OAuth client role change
+
+The lab registers `outlook-mcp` at AAS with MCP's `/auth/callback`; the old `outlook-litellm` client is disabled. Acceptance checks the real Keycloak redirect client ID and S256 challenge, MCP consent, MCP-side code exchange, refresh rotation and replay rejection. LiteLLM no longer receives the AAS client secret. MCP-issued and AAS tokens differ; encrypted upstream tokens persist in the `oauth-state` volume.
+
+Migration requires users to sign in again; legacy tokens do not work in proxy mode. Keep the OAuth volume across restarts. If intentionally deleting it, also remove `.local/litellm-oauth-client.json` and re-register LiteLLM. Keycloak substitutes for real AAS; its Exchange access contract is unverified.
+
+OAuth role/lifecycle and container-recreation evidence: [OAuth client results](../oauth-client-results.json). The encrypted state and downstream registration survived container recreation without another user login.

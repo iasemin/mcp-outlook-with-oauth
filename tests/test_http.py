@@ -31,6 +31,7 @@ async def setup(tmp_path):
     mapping = tmp_path / "mailboxes.json"
     mapping.write_text(json.dumps({"alice-id": "alice@lab.example", "bob-id": "bob@lab.example"}))
     settings = Settings(
+        auth_mode="resource",
         backend="demo",
         issuer="https://issuer.example/realms/test",
         public_key=public.decode(),

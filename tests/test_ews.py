@@ -11,6 +11,7 @@ def config(tmp_path):
     mapping = tmp_path / "map.json"
     mapping.write_text('{"user": "alice@lab.example"}')
     return Settings(
+        auth_mode="resource",
         backend="ews",
         issuer="https://idp.example/realms/corp",
         jwks_uri="https://idp.example/keys",

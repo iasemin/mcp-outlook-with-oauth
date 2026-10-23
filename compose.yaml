@@ -62,6 +62,14 @@ services:
     image: outlook-ews-mcp:local
     environment:
       OUTLOOK_BACKEND: demo
+      OUTLOOK_AUTH_MODE: proxy
+      OUTLOOK_AUTHORIZATION_ENDPOINT: http://localhost:8800/realms/outlook-lab/protocol/openid-connect/auth
+      OUTLOOK_TOKEN_ENDPOINT: http://keycloak:8080/realms/outlook-lab/protocol/openid-connect/token
+      OUTLOOK_OAUTH_CLIENT_ID: outlook-mcp
+      OUTLOOK_OAUTH_CLIENT_SECRET_FILE: /run/secrets/aas-client-secret
+      OUTLOOK_OAUTH_SIGNING_KEY_FILE: /run/secrets/oauth-signing-key
+      OUTLOOK_OAUTH_STORAGE_DIR: /var/lib/outlook-mcp/oauth
+      OUTLOOK_CLIENT_REDIRECT_URIS: '["http://localhost:8400/callback","http://localhost:8899/callback"]'
       OUTLOOK_ISSUER: http://localhost:8800/realms/outlook-lab
       OUTLOOK_JWKS_URI: http://keycloak:8080/realms/outlook-lab/protocol/openid-connect/certs
       OUTLOOK_AUDIENCE: outlook-mcp
@@ -69,6 +77,9 @@ services:
       OUTLOOK_MAPPING_FILE: /run/config/mailboxes.json
     volumes:
       - ./.local/mailboxes.json:/run/config/mailboxes.json:ro
+      - ./.local/aas-client-secret:/run/secrets/aas-client-secret:ro
+      - ./.local/oauth-signing-key:/run/secrets/oauth-signing-key:ro
+      - oauth-state:/var/lib/outlook-mcp/oauth
     ports:
       - 127.0.0.1:8766:8766
     networks:
@@ -90,3 +101,4 @@ networks:
     name: ${LITELLM_NETWORK:-litellm_guardrails_default}
 volumes:
   keycloak-db:
+  oauth-state:

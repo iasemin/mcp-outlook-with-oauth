@@ -8,7 +8,7 @@
 git clone https://github.com/iasemin/mcp-outlook-with-oauth.git
 cd mcp-outlook-with-oauth
 docker buildx build --platform linux/amd64 \
-  -t YOUR_REGISTRY/mcp-outlook-with-oauth:0.1.0 --push .
+  -t YOUR_REGISTRY/mcp-outlook-with-oauth:0.2.0 --push .
 ```
 
 Готовый образ пока не опубликован. Архитектура сборки должна совпадать с нодами Kubernetes; на Apple Silicon сборка по умолчанию ARM64.
@@ -30,23 +30,37 @@ Preview должен содержать только согласованные 
 
 Записать точную сборку CU15/SU/HU и реальные результаты. [Microsoft: ограниченный impersonation](https://learn.microsoft.com/en-us/exchange/client-developer/exchange-web-services/how-to-configure-impersonation), [Extended Protection](https://learn.microsoft.com/en-us/exchange/plan-and-deploy/post-installation-tasks/security-best-practices/exchange-extended-protection).
 
-## Keycloak и LiteLLM
+## AAS (Keycloak на стенде), MCP и LiteLLM
 
-Создать confidential OIDC client, например `outlook-litellm`:
+**OAuth2-клиент AAS — сам MCP.** Зарегистрировать confidential client `outlook-mcp`, передать его секрет только MCP:
 
-- Standard Flow включён; PKCE **S256 обязателен**. Direct Access Grants и Service Accounts выключены.
-- Точный callback: `https://YOUR_LITELLM/callback`.
-- Access token содержит стабильный `sub`, правильный `iss`, `aud` с `outlook-mcp`, `exp`, `typ=Bearer` и запрошенные scopes. Добавить Subject/Audience mappers именно в access token.
-- Scopes из таблицы ниже подключить как optional; разрешения на их выдачу задаются политиками IdP. Объявление optional scope само по себе не ограничивает, кто может его запросить.
+- Authorization Code, PKCE S256; callback `https://YOUR_MCP/auth/callback`.
+- Access token: стабильный `sub`, ожидаемые `iss`, `aud=outlook-mcp`, `exp`, `typ=Bearer`, `scope`; текущий verifier поддерживает RS256 JWT. Для opaque-токенов или другого контракта AAS потребуется адаптер.
+- Scopes из таблицы ниже выдаются по политикам IdP. На тестовом Keycloak они optional; парольный grant выключен.
 
-В LiteLLM создать новую запись MCP: HTTP, `https://YOUR_MCP/mcp`, `auth_type=oauth2`, `oauth2_flow=authorization_code`, client ID/secret и нужные scopes. Один HTTPS issuer должен открываться браузером, LiteLLM и MCP. В проверенном LiteLLM 1.96.0 issuer имеет приоритет над ручными OAuth endpoints; не смешивать несовместимые адреса discovery и ручных настроек.
+MCP публикует `/.well-known/oauth-authorization-server`, `/register`, `/authorize`, `/token`, `/auth/callback` и `/mcp`. В ingress нужно открыть все эти пути, `/consent` и protected-resource discovery. MCP сам обменивает код и обновляет токены у AAS. Пользователь подтверждает доступ на consent-странице MCP, затем входит в AAS. Пароль пользователя вводится только на стороне AAS.
 
-Каждому пользователю нужен отдельный LiteLLM `user_id` и разрешённый virtual key (`object_permission.mcp_servers`). Refresh tokens хранятся в LiteLLM. Client secret передаётся LiteLLM; самому MCP достаточно JWKS.
+LiteLLM регистрируется **у MCP**, а не у AAS: `POST https://YOUR_MCP/register` с `redirect_uris=["https://YOUR_LITELLM/callback"]`, `token_endpoint_auth_method="none"`, `grant_types=["authorization_code","refresh_token"]`, `response_types=["code"]`. Ответ содержит отдельный downstream `client_id`. Разрешённый redirect заранее задать в `OUTLOOK_CLIENT_REDIRECT_URIS`.
+
+В LiteLLM: HTTP URL `https://YOUR_MCP/mcp`, `auth_type=oauth2`, `oauth2_flow=authorization_code`, полученный client ID, endpoints `https://YOUR_MCP/authorize` и `https://YOUR_MCP/token`, нужные scopes. Не передавать LiteLLM client ID/secret AAS. Для discovery issuer — MCP; issuer AAS остаётся в настройках самого MCP. На стенде используются раздельные browser/Docker URL и ручные endpoints без issuer в LiteLLM.
+
+Каждому пользователю нужен отдельный LiteLLM `user_id` и разрешённый virtual key. LiteLLM хранит MCP-токены; upstream access/refresh tokens AAS хранятся **в MCP в зашифрованном виде**. Сохранить постоянный signing key и каталог OAuth-состояния: потеря любого из них потребует повторной регистрации LiteLLM у MCP и входа пользователей. Смена signing key также меняет ключ шифрования. Резервные копии считать секретными.
+
+Это меняет роль MCP в OAuth, но не транспорт EWS: пока используется служебная AD-учётка с impersonation. Получение паролей из AAS и вход в Exchange пользовательским токеном не реализованы. Их нельзя вывести из стандартного OAuth2 без контракта платформы.
 
 ## Настройки MCP и файлы
 
 | Переменная | Пример |
 |---|---|
+| OUTLOOK_AUTH_MODE | `proxy` (по умолчанию); `resource` — прежний режим проверки токенов |
+| OUTLOOK_AUTHORIZATION_ENDPOINT | `https://aas.corp.example/authorize` |
+| OUTLOOK_TOKEN_ENDPOINT | `https://aas.corp.example/token` |
+| OUTLOOK_OAUTH_CLIENT_ID | `outlook-mcp` — зарегистрирован в AAS |
+| OUTLOOK_OAUTH_CLIENT_SECRET_FILE | `/run/oauth-secrets/aas-client-secret` |
+| OUTLOOK_OAUTH_SIGNING_KEY_FILE | `/run/oauth-secrets/oauth-signing-key` — постоянный случайный секрет, ≥32 символов |
+| OUTLOOK_OAUTH_STORAGE_DIR | `/var/lib/outlook-mcp/oauth` — постоянный том, запись для UID 10001 |
+| OUTLOOK_CLIENT_REDIRECT_URIS | `["https://YOUR_LITELLM/callback"]` — JSON-список точных URL |
+| OUTLOOK_TOKEN_ENDPOINT_AUTH_METHOD | `client_secret_basic` (по умолчанию) или `client_secret_post` |
 | OUTLOOK_BACKEND | `ews` (`demo` — только синтетические данные) |
 | OUTLOOK_ISSUER | `https://sso.corp.example/realms/corp` |
 | OUTLOOK_JWKS_URI | `https://sso.corp.example/realms/corp/protocol/openid-connect/certs` |
@@ -74,11 +88,13 @@ Preview должен содержать только согласованные 
 Использовать `deploy/k8s/mcp.yaml`. Заменить DNS и image. В namespace `outlook-mcp` подготовить:
 
 - Secret `outlook-ews`: ключи `username`, `ews-password`.
+- Secret `outlook-oauth`: ключи `aas-client-secret`, `oauth-signing-key`.
+- PVC `outlook-oauth-state` для шифрованного OAuth-состояния (UID 10001).
 - ConfigMap `outlook-mailbox-mapping`: ключ `mailboxes.json`.
 - ConfigMap `outlook-ca`: ключ `ca.pem`.
-- Доступ к registry и внутренний TLS ingress для `/mcp` по правилам вашей платформы.
+- Доступ к registry и внутренний TLS ingress для MCP и его OAuth-путей по правилам вашей платформы.
 
-В манифесте есть non-root UID 10001, read-only filesystem, ограничения ресурсов, probes процесса и Service. Начать с одной реплики. EWS-режим stateless и допускает масштабирование; demo хранит состояние в памяти и работает в одной реплике. Манифесты ещё не проверены развёртыванием в кластере.
+В манифесте одна реплика, стратегия Recreate и PVC: HTTP MCP stateless, но OAuth-прокси хранит состояние. Не масштабировать этот файловый store на несколько реплик; для этого потребуется общий сетевой backend и проверка конкурентного refresh. Demo также хранит письма в памяти. Манифест не проверен в кластере.
 
 Для внутреннего Docker-хоста с существующим LiteLLM есть `compose.internal.yaml`: заполнить `deploy/internal.env.example`, смонтировать файлы из `.local/internal`, использовать отдельный Compose project. Exchange и Keycloak этим файлом не устанавливаются.
 

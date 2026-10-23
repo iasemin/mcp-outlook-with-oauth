@@ -379,7 +379,7 @@ def main():
             "server_id": "outlook_lab",
             "backend": "demo",
             "exchange_verified": False,
-            "oauth": "authorization_code + S256 PKCE, real Keycloak per-user tokens persisted by LiteLLM",
+            "oauth": "MCP confidential client at Keycloak; authorization_code + S256 PKCE; LiteLLM stores MCP-issued tokens",
             "tool_count": len(TOOLS),
             "call_count": len(runner.calls),
             "positive_calls": sum(v["positive"] for v in runner.tools.values()),

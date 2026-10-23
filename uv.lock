@@ -996,12 +996,14 @@ wheels = [
 
 [[package]]
 name = "outlook-ews-mcp"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "exchangelib" },
     { name = "fastmcp" },
     { name = "httpx" },
+    { name = "py-key-value-aio", extra = ["filetree"] },
     { name = "pydantic-settings" },
 ]
 
@@ -1014,9 +1016,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=44,<51" },
     { name = "exchangelib", specifier = ">=5.6,<6" },
     { name = "fastmcp", specifier = ">=3.0,<4" },
     { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "py-key-value-aio", extras = ["filetree"], specifier = ">=0.4.6,<0.5" },
     { name = "pydantic-settings", specifier = ">=2.10,<3" },
 ]
 

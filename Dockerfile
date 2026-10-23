@@ -6,6 +6,7 @@ ENV UV_COMPILE_BYTECODE=1 PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY pyproject.toml uv.lock ./
 COPY src ./src
 RUN uv sync --frozen --no-dev --no-cache && useradd --uid 10001 --create-home mcp
+RUN mkdir -p /var/lib/outlook-mcp/oauth && chown -R 10001:10001 /var/lib/outlook-mcp
 USER 10001
 EXPOSE 8766
 HEALTHCHECK --interval=15s --timeout=3s CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8766/healthz', timeout=2)"]

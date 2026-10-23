@@ -30,8 +30,13 @@ def main():
             "/admin/realms/outlook-lab", json={"accessTokenLifespan": realm["accessTokenLifespan"]}
         )
         assert response.status_code == 204, "Realm token lifetime update failed"
-        response = client.get("/admin/realms/outlook-lab/clients", params={"clientId": "outlook-litellm"})
-        assert response.status_code == 200 and len(response.json()) == 1
+        response = client.get("/admin/realms/outlook-lab/clients", params={"clientId": "outlook-mcp"})
+        assert response.status_code == 200
+        if not response.json():
+            created = client.post("/admin/realms/outlook-lab/clients", json=realm["clients"][0])
+            assert created.status_code == 201, "MCP client creation failed"
+            response = client.get("/admin/realms/outlook-lab/clients", params={"clientId": "outlook-mcp"})
+        assert len(response.json()) == 1
         current = response.json()[0]
         response = client.put(
             "/admin/realms/outlook-lab/clients/" + current["id"], json=current | realm["clients"][0]
@@ -56,7 +61,18 @@ def main():
             for scope in scopes.json():
                 if scope["name"] in desired_names:
                     assert client.put(path + "/" + scope["id"]).status_code == 204
-    print("Lab client synchronized; password grant remains disabled for mail users.")
+        legacy = client.get("/admin/realms/outlook-lab/clients", params={"clientId": "outlook-litellm"})
+        assert legacy.status_code == 200
+        for old in legacy.json():
+            assert (
+                client.put(
+                    "/admin/realms/outlook-lab/clients/" + old["id"], json=old | {"enabled": False}
+                ).status_code
+                == 204
+            )
+    print(
+        "MCP upstream client synchronized; legacy direct LiteLLM client disabled; password grant remains disabled for mail users."
+    )
 
 
 if __name__ == "__main__":

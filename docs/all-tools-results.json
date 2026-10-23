@@ -1,11 +1,11 @@
 {
   "status": "PASS",
-  "time_moscow": "2026-10-23T12:20:14.680916+03:00",
+  "time_moscow": "2026-10-23T15:11:26.345051+03:00",
   "gateway": "http://localhost:8400",
   "server_id": "outlook_lab",
   "backend": "demo",
   "exchange_verified": false,
-  "oauth": "authorization_code + S256 PKCE, real Keycloak per-user tokens persisted by LiteLLM",
+  "oauth": "MCP confidential client at Keycloak; authorization_code + S256 PKCE; LiteLLM stores MCP-issued tokens",
   "tool_count": 12,
   "call_count": 59,
   "positive_calls": 29,

@@ -36,26 +36,43 @@ if __name__ == "__main__":
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
-    creds = json.loads((root / ".local/credentials.json").read_text())
+    registration_path = root / ".local/litellm-oauth-client.json"
+    if registration_path.exists():
+        downstream = json.loads(registration_path.read_text())
+    else:
+        # This registration is at MCP, not at AAS. No upstream secret leaves MCP.
+        registration = httpx.post(
+            "http://localhost:8766/register",
+            json={
+                "client_name": "Local LiteLLM",
+                "redirect_uris": ["http://localhost:8400/callback"],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+            },
+            timeout=30,
+        )
+        downstream = checked(registration)
+        from init_lab import private_write
+
+        private_write(registration_path, json.dumps(downstream))
     with admin_client() as client:
         payload = {
             "server_id": "outlook_lab",
             "server_name": "outlook_lab",
             "alias": "outlook_lab",
-            "description": "Local OAuth2 Keycloak mail stand. SYNTHETIC data; not a live Exchange connection.",
+            "description": "MCP is the AAS OAuth client (Keycloak lab). SYNTHETIC data; not a live Exchange connection.",
             "url": "http://outlook-mcp:8766/mcp",
             "transport": "http",
             "auth_type": "oauth2",
             "oauth2_flow": "authorization_code",
-            # Split browser and Docker endpoint addresses. An explicit issuer in LiteLLM 1.96
-            # takes precedence over manual URLs and tries localhost inside its container.
-            # MCP itself always verifies the canonical Keycloak issuer and audience.
+            # Browser uses host address; token exchange uses the Docker network.
             "issuer": None,
-            "authorization_url": "http://localhost:8800/realms/outlook-lab/protocol/openid-connect/auth",
-            "token_url": "http://outlook-keycloak:8080/realms/outlook-lab/protocol/openid-connect/token",
+            "authorization_url": "http://localhost:8766/authorize",
+            "token_url": "http://outlook-mcp:8766/token",
             "credentials": {
-                "client_id": "outlook-litellm",
-                "client_secret": creds["client"],
+                "client_id": downstream["client_id"],
+                "client_secret": None,
                 "scopes": [
                     "openid",
                     "outlook.read",
@@ -78,4 +95,6 @@ if __name__ == "__main__":
                 # Clearing issuer intentionally clears resolved endpoints in 1.96.0.
                 checked(client.put("/v1/mcp/server", json={"server_id": "outlook_lab", "issuer": None}))
             checked(client.put("/v1/mcp/server", json=payload))
-        print("Registered outlook_lab (OAuth2 authorization_code) in existing LiteLLM. Secrets not printed.")
+        print(
+            "Registered outlook_lab (MCP-owned upstream OAuth2 client) in existing LiteLLM. Secrets not printed."
+        )
